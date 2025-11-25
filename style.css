@@ -1,0 +1,71 @@
+/* Base styling matching bubbly animated index.html vibe */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Poppins', sans-serif;
+  background: linear-gradient(135deg, #ffe6f7, #e9d4ff);
+  overflow-x: hidden;
+  color: #4d3b52;
+}
+
+/* Animated bubbles */
+.bubble {
+  position: absolute;
+  border-radius: 50%;
+  opacity: 0.45;
+  animation: float 12s infinite ease-in-out;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+@keyframes float {
+  0% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-80px) scale(1.1); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+/* Container for content */
+.container {
+  width: 90%;
+  max-width: 800px;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(8px);
+  padding: 30px;
+  border-radius: 25px;
+  margin: 60px auto;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+}
+
+h1, h2 {
+  text-align: center;
+  color: #a24bcf;
+}
+
+ol, ul {
+  font-size: 1.1rem;
+  line-height: 1.6;
+}
+
+a {
+  color: #d678ff;
+  text-decoration: none;
+  transition: 0.2s;
+}
+
+a:hover {
+  color: #ae42ff;
+}
+
+/* Back button */
+.back {
+  display: inline-block;
+  margin-top: 20px;
+  padding: 8px 15px;
+  background: #f8d9ff;
+  border-radius: 12px;
+}
+
+.back:hover {
+  background: #f2c5ff;
+}
