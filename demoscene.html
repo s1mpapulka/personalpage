@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Demoscene — Cute Shader</title>
+<style>
+  html,body { height:100%; margin:0; }
+  canvas { display:block; width:100vw; height:100vh; }
+  /* small overlay controls */
+  .ui {
+    position: fixed;
+    left: 12px; top: 12px;
+    background: rgba(255,255,255,0.8);
+    padding:8px 12px;
+    border-radius:12px;
+    font-family:system-ui,Segoe UI,Arial;
+    z-index: 10;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+  }
+  label { font-size:0.9rem; }
+  input[type=range] { width:120px; vertical-align: middle; }
+</style>
+</head>
+<body>
+
+<canvas id="gl"></canvas>
+
+<div class="ui">
+  <label>Speed <input id="speed" type="range" min="0" max="3" step="0.01" value="1"></label>
+  <br>
+  <label>Scale <input id="scale" type="range" min="0.3" max="3" step="0.01" value="1"></label>
+</div>
+
+<script>
+// --- WebGL helper: create context, compile shaders, link program ---
+const canvas = document.getElementById('gl');
+const gl = canvas.getContext('webgl');
+if (!gl) { alert('Your browser does not support WebGL'); throw 0; }
+
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width  = Math.floor(innerWidth * dpr);
+  canvas.height = Math.floor(innerHeight * dpr);
+  canvas.style.width = innerWidth + 'px';
+  canvas.style.height = innerHeight + 'px';
+  gl.viewport(0,0,canvas.width,canvas.height);
+}
+window.addEventListener('resize', resize);
+resize();
+
+function compile(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    console.error(gl.getShaderInfoLog(s));
+    throw new Error('Shader compile error');
+  }
+  return s;
+}
+
+// Simple vertex shader (pass-through)
+const vs = compile(gl.VERTEX_SHADER, `
+attribute vec2 aPos;
+void main() {
+  gl_Position = vec4(aPos, 0.0, 1.0);
+}`);
+
+// Fragment shader: animated pastel bubbly flow
+const fs = compile(gl.FRAGMENT_SHADER, `
+precision highp float;
+uniform vec2 uRes;
+uniform float uTime;
+uniform float uSpeed;
+uniform float uScale;
+uniform vec2 uMouse;
+
+// 2D rotation
+mat2 rot(float a){ float c=cos(a), s=sin(a); return mat2(c,-s,s,c); }
+
+// cheap noise
+float hash(vec2 p){
+  p = 50.0 * fract(p * 0.3183099 + vec2(0.71,0.113));
+  return fract(p.x * p.y * (p.x + p.y));
+}
+float noise(vec2 p){
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f*f*(3.0-2.0*f);
+  float a = hash(i);
+  float b = hash(i + vec2(1.0,0.0));
+  float c = hash(i + vec2(0.0,1.0));
+  float d = hash(i + vec2(1.0,1.0));
+  return mix(mix(a,b,f.x), mix(c,d,f.x), f.y);
+}
+
+// palette (soft pastel)
+vec3 pal(float t){
+  vec3 a = vec3(1.0,0.9,0.95);
+  vec3 b = vec3(0.98,0.6,0.85);
+  vec3 c = vec3(0.6,0.9,1.0);
+  vec3 d = vec3(1.0,0.8,0.6);
+  return mix(mix(a,b, smoothstep(0.0,0.5,t) ), mix(c,d, smoothstep(0.5,1.0,t)), 0.5);
+}
+
+void main(){
+  vec2 uv = gl_FragCoord.xy / uRes;            // 0..1
+  vec2 p = (uv - 0.5) * (uRes.x/uRes.y);      // keep aspect
+  float t = uTime * uSpeed;
+
+  // base moving noise field
+  vec2 q = p * uScale;
+  q += vec2(sin(t*0.3), cos(t*0.4)) * 0.5;
+
+  float n = 0.0;
+  float amp = 1.0;
+  float freq = 1.0;
+  // layered noise (fbm-like)
+  for(int i=0;i<5;i++){
+    n += (noise(q * freq + float(i)*0.37 + vec2(t*0.15, -t*0.12)) - 0.5) * amp;
+    freq *= 2.0;
+    amp *= 0.6;
+  }
+
+  // create soft circular blobs
+  float blobs = 0.0;
+  for (int i=0; i<6; i++){
+    float phase = float(i)*2.0 + t*0.6;
+    vec2 center = vec2(cos(phase), sin(phase)) * 0.6;
+    float d = length(p - center* (0.4 + 0.1*sin(t*0.3 + float(i))));
+    blobs += smoothstep(0.45, 0.0, d) * (0.6 + 0.4*sin(phase*1.3 + t*0.7));
+  }
+  blobs = clamp(blobs, 0.0, 1.0);
+
+  // combine noise + blobs
+  float final = smoothstep(-0.2, 0.6, n * 0.8 + blobs*1.0);
+
+  // color
+  vec3 col = pal(final + 0.15 * sin(t*0.7 + n*3.0));
+
+  // subtle vignette
+  float vig = smoothstep(0.75, 0.35, length(uv - 0.5));
+  col *= mix(1.0, 0.88, vig);
+
+  gl_FragColor = vec4(col, 1.0);
+}
+`);
+
+const prog = gl.createProgram();
+gl.attachShader(prog, vs);
+gl.attachShader(prog, fs);
+gl.linkProgram(prog);
+if(!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+  console.error(gl.getProgramInfoLog(prog));
+  throw new Error('Program link error');
+}
+gl.useProgram(prog);
+
+// geometry (two triangles covering the screen)
+const quad = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1,  -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
+const aPos = gl.getAttribLocation(prog, 'aPos');
+gl.enableVertexAttribArray(aPos);
+gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+// uniforms
+const uRes = gl.getUniformLocation(prog, 'uRes');
+const uTime = gl.getUniformLocation(prog, 'uTime');
+const uSpeed = gl.getUniformLocation(prog, 'uSpeed');
+const uScale = gl.getUniformLocation(prog, 'uScale');
+const uMouse = gl.getUniformLocation(prog, 'uMouse');
+
+let start = performance.now();
+let mouse = [0,0];
+
+canvas.addEventListener('mousemove', (e)=>{
+  mouse[0] = e.clientX / innerWidth;
+  mouse[1] = 1 - e.clientY / innerHeight;
+});
+
+// UI bindings
+const speedControl = document.getElementById('speed');
+const scaleControl = document.getElementById('scale');
+
+function render() {
+  const now = performance.now();
+  const time = (now - start) / 1000;
+
+  gl.uniform2f(uRes, canvas.width, canvas.height);
+  gl.uniform1f(uTime, time);
+  gl.uniform1f(uSpeed, parseFloat(speedControl.value));
+  gl.uniform1f(uScale, parseFloat(scaleControl.value));
+  gl.uniform2f(uMouse, mouse[0], mouse[1]);
+
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+  requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+</script>
+
+</body>
+</html>
